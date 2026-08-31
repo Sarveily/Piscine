@@ -1,0 +1,35 @@
+" ============================================================
+"  vimrc oriente Norme 42
+"  Installation : cp vimrc-42 ~/.vimrc
+" ============================================================
+
+" --- LE PLUS IMPORTANT : tabulations, jamais d'espaces ---
+set noexpandtab
+set tabstop=4
+set shiftwidth=4
+set softtabstop=0
+
+" --- voir les caracteres invisibles (espaces en fin de ligne, tabulations) ---
+set list
+set listchars=tab:>-,trail:.,extends:>,precedes:<
+
+" --- barre verticale a la colonne 81 : tu vois deborder avant norminette ---
+set colorcolumn=81
+highlight ColorColumn ctermbg=darkgrey
+
+" --- confort ---
+syntax on
+filetype plugin indent on
+set number
+set ruler
+set laststatus=2
+set autoindent
+set backspace=indent,eol,start
+set incsearch
+set hlsearch
+set showmatch
+set mouse=
+
+" --- une seule newline en fin de fichier ---
+set noeol
+set fixendofline

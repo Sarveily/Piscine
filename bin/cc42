@@ -1,0 +1,3 @@
+#!/bin/bash
+# compile comme la moulinette et rale au moindre warning
+exec cc -Wall -Wextra -Werror "$@"

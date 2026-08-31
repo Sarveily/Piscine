@@ -1,0 +1,114 @@
+#!/bin/bash
+# rushtest - teste un rushNN (compilation, fonctions autorisees, norme, sortie)
+# usage: rushtest [00|01|02|03|04]   (sinon deduit du nom du dossier)
+
+G='\033[38;5;84m'; R='\033[38;5;197m'; Y='\033[38;5;220m'; B='\033[38;5;45m'; GREY='\033[38;5;8m'; D='\033[0m'
+KITDIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+N="$1"
+[ -z "$N" ] && N=$(basename "$PWD" | grep -o '[0-9]\{2\}$')
+if ! [[ "$N" =~ ^0[0-4]$ ]]; then
+  printf "${R}usage: rushtest [00|01|02|03|04] (ou lance-le depuis un dossier rushNN/)${D}\n"; exit 1
+fi
+SRC="rush$N.c"
+[ -f "$SRC" ] || { printf "${R}$SRC introuvable dans $PWD${D}\n"; exit 1; }
+[ -f ft_putchar.c ] || { printf "${R}ft_putchar.c introuvable${D}\n"; exit 1; }
+
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+FAIL=0; PASS=0
+
+# ---------- 1. compilation ----------
+printf "${B}== compilation (-Wall -Wextra -Werror) ==${D}\n"
+cat > "$TMP/tmain.c" <<'EOF'
+void	rush(int x, int y);
+static int	nb(char *s)
+{
+	int	n = 0, sg = 1, i = 0;
+	if (s[0] == '-') { sg = -1; i = 1; }
+	while (s[i] >= '0' && s[i] <= '9') { n = n * 10 + (s[i] - '0'); i++; }
+	return (n * sg);
+}
+int	main(int ac, char **av)
+{
+	if (ac == 3)
+		rush(nb(av[1]), nb(av[2]));
+	return (0);
+}
+EOF
+if ! cc -Wall -Wextra -Werror -o "$TMP/a.out" "$TMP/tmain.c" "$SRC" ft_putchar.c 2> "$TMP/cc.log"; then
+  printf "${R}KO - ca ne compile pas :${D}\n"; cat "$TMP/cc.log"; exit 1
+fi
+[ -s "$TMP/cc.log" ] && { printf "${Y}warnings :${D}\n"; cat "$TMP/cc.log"; }
+printf "${G}OK${D}\n"
+
+# ton main.c a toi doit compiler aussi
+if [ -f main.c ]; then
+  if cc -Wall -Wextra -Werror -o "$TMP/main.out" main.c "$SRC" ft_putchar.c 2>"$TMP/cc2.log"; then
+    printf "${G}OK${D} ton main.c compile aussi\n"
+  else
+    printf "${R}KO${D} ton main.c ne compile pas :\n"; cat "$TMP/cc2.log"; FAIL=$((FAIL+1))
+  fi
+fi
+
+# ---------- 2. fonctions autorisees : write uniquement ----------
+printf "\n${B}== fonctions externes utilisees (seul write est autorise) ==${D}\n"
+cc -c -o "$TMP/s1.o" "$SRC" 2>/dev/null; cc -c -o "$TMP/s2.o" ft_putchar.c 2>/dev/null
+nm "$TMP/s1.o" "$TMP/s2.o" 2>/dev/null | awk '$1 == "U" {print $2}' | sed 's/@.*//' | sort -u > "$TMP/undef"
+nm "$TMP/s1.o" "$TMP/s2.o" 2>/dev/null | awk 'NF >= 3 && $2 ~ /^[TtDdBbRrWw]$/ {print $3}' | sed 's/@.*//' | sort -u > "$TMP/def"
+UNDEF=$(comm -23 "$TMP/undef" "$TMP/def" \
+  | grep -v -E '^(write|_GLOBAL_OFFSET_TABLE_|__stack_chk_fail)$')
+if [ -n "$UNDEF" ]; then
+  printf "${R}KO - fonctions interdites :${D} %s\n" "$(echo $UNDEF)"; FAIL=$((FAIL+1))
+else
+  printf "${G}OK${D} - write uniquement\n"
+fi
+
+# ---------- 3. norminette ----------
+printf "\n${B}== norminette ==${D}\n"
+if command -v norminette >/dev/null 2>&1; then
+  if norminette "$SRC" ft_putchar.c $([ -f main.c ] && echo main.c) 2>/dev/null | grep -q "Error"; then
+    norminette "$SRC" ft_putchar.c $([ -f main.c ] && echo main.c) 2>/dev/null | grep -v "^Setting locale"; FAIL=$((FAIL+1))
+  else
+    printf "${G}OK${D}\n"
+  fi
+else
+  printf "${Y}norminette pas installee, skip${D}\n"
+fi
+
+# ---------- 4. sortie ----------
+printf "\n${B}== sortie ==${D}\n"
+show () {
+  # affiche un fichier octet par octet : |ligne| ; une ligne vide se voit, un fichier vide aussi
+  if [ ! -s "$1" ]; then printf "      ${GREY}(rien, 0 octet)${D}\n"; return; fi
+  sed 's/^/      |/;s/$/|/' "$1"
+  printf "      ${GREY}%s octets${D}\n" "$(wc -c < "$1" | tr -d ' ')"
+}
+run_case () {
+  local x=$1 y=$2
+  "$TMP/a.out" "$x" "$y" > "$TMP/got" 2>/dev/null; local rc=$?
+  python3 "$KITDIR/expected.py" "$N" "$x" "$y" > "$TMP/exp"
+  if [ $rc -ge 128 ]; then
+    printf "  ${R}CRASH${D}  rush(%s, %s)  (signal %s)\n" "$x" "$y" "$((rc-128))"; FAIL=$((FAIL+1)); return
+  fi
+  if cmp -s "$TMP/got" "$TMP/exp"; then
+    printf "  ${G}ok${D}     rush(%s, %s)\n" "$x" "$y"; PASS=$((PASS+1))
+  else
+    printf "  ${R}KO${D}     rush(%s, %s)\n" "$x" "$y"
+    printf "    ${G}attendu :${D}\n"; show "$TMP/exp"
+    printf "    ${R}obtenu  :${D}\n"; show "$TMP/got"
+    FAIL=$((FAIL+1))
+  fi
+}
+# cas du sujet
+for c in "5 3" "5 1" "1 1" "1 5" "4 4"; do run_case $c; done
+printf "  ${B}--- cas supplementaires ---${D}\n"
+for c in "2 2" "3 3" "2 1" "1 2" "10 7" "42 3" "1 10"; do run_case $c; done
+printf "  ${B}--- valeurs nulles / negatives (ne doit rien afficher, ne pas crasher) ---${D}\n"
+for c in "0 0" "0 5" "5 0" "-3 4" "4 -3" "-1 -1"; do run_case $c; done
+
+printf "\n"
+if [ $FAIL -eq 0 ]; then
+  printf "${G}=== TOUT PASSE (%s cas) ===${D}\n" "$PASS"
+else
+  printf "${R}=== %s echec(s), %s ok ===${D}\n" "$FAIL" "$PASS"
+fi
+exit $FAIL

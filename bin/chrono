@@ -1,0 +1,10 @@
+#!/bin/bash
+# chrono <minutes> [libelle] - compte a rebours pour simuler un exam / un rush
+M=${1:-60}; L=${2:-"exam"}
+END=$(( $(date +%s) + M*60 ))
+while [ "$(date +%s)" -lt "$END" ]; do
+  LEFT=$(( END - $(date +%s) ))
+  printf "\r\033[38;5;220m%s : %02d:%02d restantes\033[0m  " "$L" $((LEFT/60)) $((LEFT%60))
+  sleep 1
+done
+printf "\r\033[38;5;197m%s : TEMPS ECOULE. Rendu ferme.\033[0m\n" "$L"

@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Genere un header 42 valide (80 colonnes, accepte par norminette)."""
+import sys, os, datetime, re
+
+TEMPL = [
+"/* ************************************************************************** */",
+"/*                                                                            */",
+"/*                                                        :::      ::::::::   */",
+"/*   $FILENAME                                          :+:      :+:    :+:   */",
+"/*                                                    +:+ +:+         +:+     */",
+"/*   By: $USER <$MAIL>                              +#+  +:+       +#+        */",
+"/*                                                +#+#+#+#+#+   +#+           */",
+"/*   Created: $CREATEDAT by $CREATEDBY               #+#    #+#              */",
+"/*   Updated: $UPDATEDAT by $UPDATEDBY              ###   ########.fr        */",
+"/*                                                                            */",
+"/* ************************************************************************** */",
+]
+
+def fit80(line):
+    """Ajuste la plus longue suite d'espaces pour que la ligne fasse 80 colonnes."""
+    diff = len(line) - 80
+    if diff == 0:
+        return line
+    runs = [(m.start(), m.end()) for m in re.finditer(r" {2,}", line)]
+    if not runs:
+        return line
+    s, e = max(runs, key=lambda r: r[1] - r[0])
+    if diff > 0:
+        eat = min(diff, (e - s) - 1)
+        return line[:s] + line[s + eat:]
+    return line[:s] + " " * (-diff) + line[s:]
+
+def header(filename, login, mail, when=None):
+    when = when or datetime.datetime.now()
+    ts = when.strftime("%Y/%m/%d %H:%M:%S")
+    repl = {"$FILENAME": filename, "$USER": login, "$MAIL": mail,
+            "$CREATEDAT": ts, "$CREATEDBY": login,
+            "$UPDATEDAT": ts, "$UPDATEDBY": login}
+    out = []
+    for l in TEMPL:
+        for k, v in repl.items():
+            l = l.replace(k, v)
+        out.append(fit80(l))
+    return "\n".join(out) + "\n"
+
+def main():
+    login = os.environ.get("USER42", "marvin")
+    mail = os.environ.get("MAIL42", login + "@student.42.fr")
+    if len(sys.argv) < 2:
+        print("usage: gen_header.py <fichier.c> [...]", file=sys.stderr)
+        return 1
+    for path in sys.argv[1:]:
+        name = os.path.basename(path)
+        if not os.path.exists(path):
+            open(path, "w").write(header(name, login, mail) + "\n")
+            print("cree  " + path)
+            continue
+        body = open(path).read()
+        if body.startswith("/* *****"):
+            print("skip  " + path + " (header deja present)")
+            continue
+        open(path, "w").write(header(name, login, mail) + "\n" + body)
+        print("ajout " + path)
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
